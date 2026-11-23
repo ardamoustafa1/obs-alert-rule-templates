@@ -1,0 +1,22 @@
+apiVersion: obs.acme.com/v1
+kind: ServiceObservability
+metadata:
+  name: payout-worker
+  owner: team-payments
+  slack_channel: "#payments-alerts"
+  pagerduty_service: payments-production
+spec:
+  serviceType: worker
+  environment: prod
+  slo:
+    availability_target: 0.995
+    latency_target_ms: 5000
+    latency_percentile: 95
+  goldenSignals:
+    trafficMetric: payout_jobs_started_total
+    errorMetric: payout_jobs_failed_total
+    processingDurationMetric: payout_job_duration_seconds
+    saturationMetrics:
+      - queue_depth_utilization_ratio
+  alerting:
+    burnRateAlerts: true

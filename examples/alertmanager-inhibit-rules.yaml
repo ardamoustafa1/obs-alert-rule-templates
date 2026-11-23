@@ -1,0 +1,63 @@
+# Example Alertmanager config fragment for the alerts this repo generates.
+#
+# Goal: reduce alert fatigue by not paging/ticketing on symptoms of an
+# outage that is already paging. When a service is burning its error
+# budget hard enough to trip the fast-burn tier, its latency-SLO and
+# saturation alerts are almost certainly *consequences* of the same root
+# cause, not independent problems -- so they are inhibited rather than
+# fanned out as separate notifications.
+#
+# All alerts in this repo already carry `team`, `service`, `environment`
+# and `severity` labels (see templates/alert-rules.libsonnet); routing to
+# the right on-call/ticket destination per team is obs-notification-router's
+# job, not this file's -- this only shows the inhibition relationships.
+
+route:
+  receiver: default-ticket
+  group_by: [team, service, alertname]
+  routes:
+    - matchers: ['severity="page"']
+      receiver: pagerduty
+      continue: false
+    - matchers: ['severity="warning"']
+      receiver: default-ticket
+
+receivers:
+  - name: pagerduty
+  - name: default-ticket
+
+inhibit_rules:
+  # A service that is actively burning its error budget (fast tier) is
+  # down or badly degraded. Its own latency-SLO and saturation alerts are
+  # downstream noise, so silence them for the same service+environment
+  # while the burn-rate page is active.
+  - source_matchers:
+      - alert_type="burn_rate"
+      - burn_rate_window="1h/5m"
+      - severity="page"
+    target_matchers:
+      - alert_type=~"latency_slo|saturation"
+    equal: [service, environment]
+
+  # The slow-burn tier is a real, sustained budget leak too. It should
+  # still inhibit saturation warnings for the same service (a known,
+  # already-paging leak doesn't also need a separate "CPU is high"
+  # ticket), but it does NOT inhibit latency-SLO alerts: a slow burn can
+  # be error-only (e.g. a background job silently failing) while latency
+  # stays fine, so latency alerts remain independently actionable.
+  - source_matchers:
+      - alert_type="burn_rate"
+      - severity="page"
+    target_matchers:
+      - alert_type="saturation"
+    equal: [service, environment]
+
+  # Generic completeness rule: any already-paging alert for a service
+  # inhibits warning-severity alerts for that same service+environment,
+  # regardless of alertname. This is the "service is fully down, don't
+  # also ticket every symptom" backstop mentioned in the requirements.
+  - source_matchers:
+      - severity="page"
+    target_matchers:
+      - severity="warning"
+    equal: [service, environment]

@@ -1,0 +1,47 @@
+groups:
+- name: checkout-api.slo.burn-rate
+  rules:
+  - alert: CheckoutApiErrorBudgetBurnFast
+    annotations:
+      description: Observed error ratio over both the 1h and 5m windows exceeds 14.4x
+        the allowed burn rate for a 0.999 availability target. At this rate the 30
+        day error budget empties in about ~2 days.
+      runbook_url: https://runbooks.acme.com/http/CheckoutApiErrorBudgetBurnFast
+      summary: checkout-api is burning its error budget 14.4x faster than sustainable
+        (1h/5m window)
+    expr: "(\n  sum(rate(http_server_request_errors_total{service=\"checkout-api\"\
+      ,environment=\"prod\"}[1h]))\n  /\n  clamp_min(sum(rate(http_server_requests_total{service=\"\
+      checkout-api\",environment=\"prod\"}[1h])), 1e-9)\n) > 0.0144\nand\n(\n  sum(rate(http_server_request_errors_total{service=\"\
+      checkout-api\",environment=\"prod\"}[5m]))\n  /\n  clamp_min(sum(rate(http_server_requests_total{service=\"\
+      checkout-api\",environment=\"prod\"}[5m])), 1e-9)\n) > 0.0144"
+    for: 2m
+    labels:
+      alert_type: burn_rate
+      burn_rate_window: 1h/5m
+      environment: prod
+      service: checkout-api
+      severity: page
+      slo_target: '0.999'
+      team: team-checkout
+  - alert: CheckoutApiErrorBudgetBurnSlow
+    annotations:
+      description: Observed error ratio over both the 6h and 30m windows exceeds 6x
+        the allowed burn rate for a 0.999 availability target. At this rate the 30
+        day error budget empties in about ~5 days.
+      runbook_url: https://runbooks.acme.com/http/CheckoutApiErrorBudgetBurnSlow
+      summary: checkout-api is burning its error budget 6x faster than sustainable
+        (6h/30m window)
+    expr: "(\n  sum(rate(http_server_request_errors_total{service=\"checkout-api\"\
+      ,environment=\"prod\"}[6h]))\n  /\n  clamp_min(sum(rate(http_server_requests_total{service=\"\
+      checkout-api\",environment=\"prod\"}[6h])), 1e-9)\n) > 0.006\nand\n(\n  sum(rate(http_server_request_errors_total{service=\"\
+      checkout-api\",environment=\"prod\"}[30m]))\n  /\n  clamp_min(sum(rate(http_server_requests_total{service=\"\
+      checkout-api\",environment=\"prod\"}[30m])), 1e-9)\n) > 0.006"
+    for: 15m
+    labels:
+      alert_type: burn_rate
+      burn_rate_window: 6h/30m
+      environment: prod
+      service: checkout-api
+      severity: page
+      slo_target: '0.999'
+      team: team-checkout

@@ -1,0 +1,49 @@
+# promtool test rules testdata/promtool/slow-burn.test.yaml
+#
+# Proves the slow-burn tier (6h/30m windows, 6x burn rate) fires on a
+# sustained low-grade error ratio that the fast-burn tier does NOT catch --
+# this is the "catch slow leaks without paging on noise" half of
+# multi-window multi-burn-rate alerting.
+#
+# Error ratio here is a constant 8/1000 = 0.008:
+#   - above the slow-burn threshold  6   * (1 - 0.999) = 0.006  -> fires
+#   - below the fast-burn threshold 14.4 * (1 - 0.999) = 0.0144 -> does not fire
+#
+# The 6h window only has enough history to be non-empty starting at t=360m;
+# with `for: 15m` the alert becomes firing at t=375m.
+rule_files:
+  - rules/burn-rate-rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_errors_total{service="checkout-api",environment="prod"}'
+        values: "0+8x420"
+      - series: 'http_server_requests_total{service="checkout-api",environment="prod"}'
+        values: "0+1000x420"
+
+    alert_rule_test:
+      - eval_time: 380m
+        alertname: CheckoutApiErrorBudgetBurnSlow
+        exp_alerts:
+          - exp_labels:
+              alert_type: burn_rate
+              burn_rate_window: 6h/30m
+              environment: prod
+              service: checkout-api
+              severity: page
+              slo_target: "0.999"
+              team: team-checkout
+            exp_annotations:
+              description: Observed error ratio over both the 6h and 30m windows exceeds 6x the allowed burn rate for a 0.999 availability target. At this rate the 30 day error budget empties in about ~5 days.
+              runbook_url: https://runbooks.acme.com/http/CheckoutApiErrorBudgetBurnSlow
+              summary: checkout-api is burning its error budget 6x faster than sustainable (6h/30m window)
+
+      # The noise-reduction half of the same story: a genuinely elevated but
+      # low-grade error ratio never wakes anyone on the fast, pager-happy
+      # tier.
+      - eval_time: 380m
+        alertname: CheckoutApiErrorBudgetBurnFast
+        exp_alerts: []
